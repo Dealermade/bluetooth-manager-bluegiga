@@ -60,10 +60,11 @@ import java.util.stream.Collectors;
  */
 class BluegigaDevice implements Device, BlueGigaEventListener {
 
-    static final int DISCOVERY_TIMEOUT = 10;
+    protected static final int DISCOVERY_TIMEOUT = 10;
     private static final Pattern DEFAULT_UUID_REPLACEMENT =
         Pattern.compile("-0000-0000-0000-000000000000", Pattern.LITERAL);
     private static final String DEFAULT_UUID = "-0000-1000-8000-00805f9b34fb";
+
     private final Logger logger = LoggerFactory.getLogger(BluegigaDevice.class);
     private final URL url;
     private final BluegigaHandler bgHandler;
@@ -149,12 +150,12 @@ class BluegigaDevice implements Device, BlueGigaEventListener {
 
     @Override
     public void enableRSSINotifications(Notification<Short> notification) {
-        this.rssiNotification = notification;
+        rssiNotification = notification;
     }
 
     @Override
     public void disableRSSINotifications() {
-        this.rssiNotification = null;
+        rssiNotification = null;
     }
 
     @Override
@@ -214,24 +215,21 @@ class BluegigaDevice implements Device, BlueGigaEventListener {
     }
 
     /*
-        Alias can be possible set to a characteristic
+      Aliases are not supported by BlueGiga
      */
     @Override
     public String getAlias() {
-        //TODO use 2a00 characteristic to set/get device alias (if possible at all)
         return null;
     }
 
     @Override
-    public void setAlias(String alias) {
-        //TODO use 2a00 characteristic to set/get device alias (if possible at all)
-    }
+    public void setAlias(String alias) { /* do nothing */}
 
     /*
         Blocking is not supported by Bluegiga devices
      */
     @Override
-    public void setBlocked(boolean blocked) { }
+    public void setBlocked(boolean blocked) { /* do nothing */ }
 
     @Override
     public boolean isBlocked() {
@@ -239,18 +237,18 @@ class BluegigaDevice implements Device, BlueGigaEventListener {
     }
 
     @Override
-    public void enableBlockedNotifications(Notification<Boolean> notification) { }
+    public void enableBlockedNotifications(Notification<Boolean> notification) { /* do nothing */ }
 
     @Override
-    public void disableBlockedNotifications() { }
+    public void disableBlockedNotifications() { /* do nothing */ }
 
-    BluegigaService getService(URL url) {
+    protected BluegigaService getService(URL url) {
         synchronized (services) {
             return services.get(url.getServiceURL());
         }
     }
 
-    void establishConnection() {
+    protected void establishConnection() {
         logger.info("Trying to connect: {}", url);
         BlueGigaConnectionStatusEvent event = bgHandler.connect(url);
         logger.info("Connected: {}", url);
@@ -259,7 +257,7 @@ class BluegigaDevice implements Device, BlueGigaEventListener {
         notifyConnected(true);
     }
 
-    void discoverServices() {
+    protected void discoverServices() {
         logger.info("Discovering services: {}", url);
         // discover services
         bgHandler.getServices(connectionHandle)
@@ -267,21 +265,21 @@ class BluegigaDevice implements Device, BlueGigaEventListener {
         logger.info("Services discovered: {}", services.size());
     }
 
-    void discoverCharacteristics() {
+    protected void discoverCharacteristics() {
         logger.info("Discovering characteristics: {}", url);
         // discover characteristics and their descriptors
         processAttributes(bgHandler.getCharacteristics(connectionHandle));
         logger.info("Characteristics discovered");
     }
 
-    void discoverDeclarations() {
+    protected void discoverDeclarations() {
         logger.info("Discovering declarations: {}", url);
         // discover characteristic properties (access flags)
         bgHandler.getDeclarations(connectionHandle).forEach(this::processDeclaration);
         logger.info("Declarations discovered: {}", url);
     }
 
-    int getConnectionHandle() {
+    protected int getConnectionHandle() {
         return connectionHandle;
     }
 

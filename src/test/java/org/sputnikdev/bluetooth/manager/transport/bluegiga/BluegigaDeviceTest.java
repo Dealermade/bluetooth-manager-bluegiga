@@ -3,6 +3,7 @@ package org.sputnikdev.bluetooth.manager.transport.bluegiga;
 import com.zsmartsystems.bluetooth.bluegiga.command.attributeclient.BlueGigaAttributeValueEvent;
 import com.zsmartsystems.bluetooth.bluegiga.command.attributeclient.BlueGigaFindInformationFoundEvent;
 import com.zsmartsystems.bluetooth.bluegiga.command.attributeclient.BlueGigaGroupFoundEvent;
+import com.zsmartsystems.bluetooth.bluegiga.command.attributeclient.BlueGigaProcedureCompletedEvent;
 import com.zsmartsystems.bluetooth.bluegiga.command.connection.BlueGigaConnectionStatusEvent;
 import com.zsmartsystems.bluetooth.bluegiga.command.connection.BlueGigaDisconnectedEvent;
 import com.zsmartsystems.bluetooth.bluegiga.command.gap.BlueGigaScanResponseEvent;
@@ -25,6 +26,7 @@ import org.sputnikdev.bluetooth.manager.transport.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -153,10 +155,6 @@ public class BluegigaDeviceTest {
     }
 
     @Test
-    public void disconnect() throws Exception {
-    }
-
-    @Test
     public void testGetBluetoothClass() throws Exception {
         assertEquals(0, bluegigaDevice.getBluetoothClass());
         int[] eir = {2, EirDataType.EIR_DEVICE_CLASS.getKey(), 10};
@@ -172,8 +170,7 @@ public class BluegigaDeviceTest {
     }
 
     @Test
-    public void testAlias() throws Exception {
-        //TODO use 2a00 characteristic to set/get device alias (if possible at all)
+    public void testGetSetAlias() throws Exception {
         bluegigaDevice.setAlias("test");
         assertNull(bluegigaDevice.getAlias());
     }
@@ -296,11 +293,6 @@ public class BluegigaDeviceTest {
     }
 
     @Test
-    public void testGetServices() throws Exception {
-
-    }
-
-    @Test
     public void testGetURL() throws Exception {
         assertEquals(DEVICE_URL, bluegigaDevice.getURL());
     }
@@ -313,7 +305,7 @@ public class BluegigaDeviceTest {
     }
 
     @Test
-    public void getService() throws Exception {
+    public void testGetService() throws Exception {
         bluegigaDevice.connect();
         assertTrue(bluegigaDevice.isConnected());
         assertNotNull(bluegigaDevice.getService(BATTERY_SERVICE_URL));
@@ -428,7 +420,5 @@ public class BluegigaDeviceTest {
         when(bluegigaHandler.connect(DEVICE_URL)).thenReturn(event);
         return event;
     }
-
-
 
 }
