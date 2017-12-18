@@ -3,7 +3,6 @@ package org.sputnikdev.bluetooth.manager.transport.bluegiga;
 import com.zsmartsystems.bluetooth.bluegiga.command.attributeclient.BlueGigaAttributeValueEvent;
 import com.zsmartsystems.bluetooth.bluegiga.command.attributeclient.BlueGigaFindInformationFoundEvent;
 import com.zsmartsystems.bluetooth.bluegiga.command.attributeclient.BlueGigaGroupFoundEvent;
-import com.zsmartsystems.bluetooth.bluegiga.command.attributeclient.BlueGigaProcedureCompletedEvent;
 import com.zsmartsystems.bluetooth.bluegiga.command.connection.BlueGigaConnectionStatusEvent;
 import com.zsmartsystems.bluetooth.bluegiga.command.connection.BlueGigaDisconnectedEvent;
 import com.zsmartsystems.bluetooth.bluegiga.command.gap.BlueGigaScanResponseEvent;
@@ -26,12 +25,12 @@ import org.sputnikdev.bluetooth.manager.transport.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static org.junit.Assert.assertEquals;
@@ -39,9 +38,11 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.anyBoolean;
 import static org.mockito.Matchers.anyInt;
 import static org.mockito.Matchers.anyShort;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -116,6 +117,10 @@ public class BluegigaDeviceTest {
         verify(bluegigaHandler).addEventListener(bluegigaDevice);
 
         bluegigaDevice = spy(bluegigaDevice);
+
+        doAnswer(invocation -> {
+            return invocation.getArgumentAt(0, Supplier.class).get();
+        }).when(bluegigaHandler).runInSynchronizedContext(any(Supplier.class));
     }
 
     @Test
@@ -155,6 +160,30 @@ public class BluegigaDeviceTest {
     }
 
     @Test
+    public void testConnectStopDiscovery() {
+        // this test not only perform testing of the connection procedure but also includes testing for the woraround
+        // of a Bluegiga bug, read some comments in the BluegigaDevice.connect method.
+
+        when(bluegigaHandler.isDiscovering()).thenReturn(true);
+
+        // mocking some stuff for the connection procedure
+        // performing the invokaction
+        BlueGigaConnectionStatusEvent event = mockConnectionStatusEvent();
+        when(bluegigaHandler.connect(DEVICE_URL)).thenReturn(event);
+
+        assertTrue(bluegigaDevice.connect());
+
+        InOrder inOrder = Mockito.inOrder(bluegigaHandler);
+        inOrder.verify(bluegigaHandler).isDiscovering();
+        inOrder.verify(bluegigaHandler).connect(DEVICE_URL);
+        inOrder.verify(bluegigaHandler).getServices(CONNECTION_HANDLE);
+        inOrder.verify(bluegigaHandler).getCharacteristics(CONNECTION_HANDLE);
+        inOrder.verify(bluegigaHandler).getDeclarations(CONNECTION_HANDLE);
+        inOrder.verify(bluegigaHandler).bgStopProcedure();
+        inOrder.verify(bluegigaHandler).bgStartScanning();
+    }
+
+    @Test
     public void testGetBluetoothClass() throws Exception {
         assertEquals(0, bluegigaDevice.getBluetoothClass());
         int[] eir = {2, EirDataType.EIR_DEVICE_CLASS.getKey(), 10};
@@ -171,8 +200,11 @@ public class BluegigaDeviceTest {
 
     @Test
     public void testGetSetAlias() throws Exception {
-        bluegigaDevice.setAlias("test");
+        // Aliases are not supported by Bluegiga, but we use just a variable to cache it
         assertNull(bluegigaDevice.getAlias());
+        bluegigaDevice.setAlias("alias");
+        assertEquals("alias", bluegigaDevice.getAlias());
+        verifyNoMoreInteractions(bluegigaHandler);
     }
 
     @Test
@@ -344,6 +376,14 @@ public class BluegigaDeviceTest {
         assertFalse(bluegigaDevice.isConnected());
         verify(connectedNotification).notify(false);
         verify(servicesResovedNotification).notify(false);
+    }
+
+    @Test
+    public void testGetTxPower() throws Exception {
+        assertEquals(0, bluegigaDevice.getTxPower());
+        int[] eir = {2, EirDataType.EIR_TXPOWER.getKey(), -60};
+        bluegigaDevice.bluegigaEventReceived(mockScanResponse((short) -100, eir));
+        assertEquals(-60, bluegigaDevice.getTxPower());
     }
 
     private void assertServices() {

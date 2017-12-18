@@ -70,11 +70,14 @@ class BluegigaDevice implements Device, BlueGigaEventListener {
     private final BluegigaHandler bgHandler;
     private String name;
     private short rssi;
+    private short txPower;
     private Instant lastDiscovered;
     private int bluetoothClass;
     private boolean bleEnabled;
     private boolean servicesResolved;
     private final Map<URL, BluegigaService> services = new HashMap<>();
+    // just a local cache, BlueGiga adapters do not support aliases
+    private String alias;
 
     // Notifications/listeners
     private Notification<Short> rssiNotification;
@@ -92,35 +95,52 @@ class BluegigaDevice implements Device, BlueGigaEventListener {
 
     @Override
     public boolean connect() {
-        if (!isConnected()) {
+        return bgHandler.runInSynchronizedContext(() -> {
+            if (!isConnected()) {
 
-            establishConnection();
+                // a workaround for a BGAPI bug when adapter becomes unstable when discovery is enabled within
+                // an attempt to connect to a device
+                // we first stop any current procedure (discovery), then do the connection procedure
+                // and then restore discovery process
+                boolean wasDiscovering = bgHandler.isDiscovering();
+                bgHandler.bgStopProcedure();
 
-            discoverServices();
+                try {
+                    establishConnection();
 
-            discoverCharacteristics();
+                    discoverServices();
 
-            discoverDeclarations();
+                    discoverCharacteristics();
 
-            serviceResolved();
+                    discoverDeclarations();
 
+                    serviceResolved();
+                } finally {
+                    // resore discovery process if it was enabled
+                    if (wasDiscovering) {
+                        bgHandler.bgStopProcedure();
+                        bgHandler.bgStartScanning();
+                    }
+                }
+            }
             return true;
-        }
-        return false;
+        });
     }
 
     @Override
     public boolean disconnect() {
-        if (connectionHandle >= 0) {
-            servicesUnresolved();
-            notifyConnected(false);
-            try {
-                bgHandler.disconnect(connectionHandle);
-            } finally {
-                connectionHandle = -1;
+        return bgHandler.runInSynchronizedContext(() -> {
+            if (connectionHandle >= 0) {
+                try {
+                    bgHandler.disconnect(connectionHandle);
+                } finally {
+                    connectionHandle = -1;
+                }
+                servicesUnresolved();
+                notifyConnected(false);
             }
-        }
-        return true;
+            return true;
+        });
     }
 
     @Override
@@ -146,6 +166,11 @@ class BluegigaDevice implements Device, BlueGigaEventListener {
             return 0;
         }
         return rssi;
+    }
+
+    @Override
+    public short getTxPower() {
+        return txPower;
     }
 
     @Override
@@ -219,11 +244,13 @@ class BluegigaDevice implements Device, BlueGigaEventListener {
      */
     @Override
     public String getAlias() {
-        return null;
+        return alias;
     }
 
     @Override
-    public void setAlias(String alias) { /* do nothing */}
+    public void setAlias(String alias) {
+        this.alias = alias;
+    }
 
     /*
         Blocking is not supported by Bluegiga devices
@@ -301,6 +328,10 @@ class BluegigaDevice implements Device, BlueGigaEventListener {
                     List<EirFlags> eirFlags = (List<EirFlags>) eir.get(EirDataType.EIR_FLAGS);
                     // any flag would mean that the device is BLE enabled
                     bleEnabled = !eirFlags.isEmpty();
+                }
+
+                if (eir.containsKey(EirDataType.EIR_TXPOWER)) {
+                    txPower = (short) (int) eir.get(EirDataType.EIR_TXPOWER);
                 }
             }
             rssi = (short) scanEvent.getRssi();
@@ -477,11 +508,11 @@ class BluegigaDevice implements Device, BlueGigaEventListener {
             if (bluegigaCharacteristic != null) {
                 bluegigaCharacteristic.setFlags(CharacteristicAccessType.parse(attributeValue[0]));
             } else {
-                logger.error("Could not find characteristic: " + characteristicUUID);
+                logger.error("Could not find characteristic: {}", characteristicUUID);
             }
 
         } else {
-            logger.error("Could not find service by handle: " + event.getAttHandle());
+            logger.error("Could not find service by handle: {}", event.getAttHandle());
         }
     }
 

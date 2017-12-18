@@ -21,6 +21,7 @@ package org.sputnikdev.bluetooth.manager.transport.bluegiga;
  */
 
 import com.zsmartsystems.bluetooth.bluegiga.BlueGigaEventListener;
+import com.zsmartsystems.bluetooth.bluegiga.BlueGigaException;
 import com.zsmartsystems.bluetooth.bluegiga.BlueGigaResponse;
 import com.zsmartsystems.bluetooth.bluegiga.command.gap.BlueGigaScanResponseEvent;
 import com.zsmartsystems.bluetooth.bluegiga.command.system.BlueGigaGetInfoResponse;
@@ -50,12 +51,11 @@ class BluegigaAdapter implements Adapter, BlueGigaEventListener {
 
     private BlueGigaGetInfoResponse info;
     private boolean discovering;
-
     private final BluegigaHandler bgHandler;
-
     private final Map<URL, BluegigaDevice> devices = new HashMap<>();
-
     private Notification<Boolean> discoveringNotification;
+    // just a local cache, BlueGiga adapters do not support aliases
+    private String alias;
 
     private BluegigaAdapter(BluegigaHandler bluegigaHandler) {
         bgHandler = bluegigaHandler;
@@ -73,6 +73,9 @@ class BluegigaAdapter implements Adapter, BlueGigaEventListener {
 
     @Override
     public boolean isDiscovering() {
+        if (!bgHandler.isAlive()) {
+            throw new BlueGigaException("BlueGiga handler is dead.");
+        }
         return discovering;
     }
 
@@ -121,14 +124,14 @@ class BluegigaAdapter implements Adapter, BlueGigaEventListener {
     @Override
     public void dispose() {
         bgHandler.removeEventListener(this);
+        bgHandler.runInSynchronizedContext(() -> {
 
-        try {
-            stopDiscovery();
-        } catch (Exception ex) {
-            logger.warn("Could not stop discovery process", ex);
-        }
+            try {
+                stopDiscovery();
+            } catch (Exception ex) {
+                logger.warn("Could not stop discovery process", ex);
+            }
 
-        synchronized (devices) {
             devices.values().forEach(device -> {
                 try {
                     device.dispose();
@@ -137,9 +140,9 @@ class BluegigaAdapter implements Adapter, BlueGigaEventListener {
                 }
             });
             devices.clear();
-        }
 
-        bgHandler.dispose();
+            bgHandler.dispose();
+        });
     }
 
     @Override
@@ -180,11 +183,13 @@ class BluegigaAdapter implements Adapter, BlueGigaEventListener {
 
     @Override
     public String getAlias() {
-        return null;
+        return alias;
     }
 
     @Override
-    public void setAlias(String alias) { /* do nothing */ }
+    public void setAlias(String alias) {
+        this.alias = alias;
+    }
 
     protected BluegigaDevice getDevice(URL url) {
         URL deviceURL = url.getDeviceURL();
